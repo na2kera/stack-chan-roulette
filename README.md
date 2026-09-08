@@ -29,10 +29,13 @@ Moddable SDK のセットアップは upstream の
 に従う。セットアップ済みなら `stack-chan/firmware` から次を実行する。
 
 ```console
-npm run mod -- ../../roulette/manifest.json
+# MOD の書き込みは esptool を直接呼ぶため、ESP-IDF の venv を PATH に足しておく
+export PATH="$HOME/.espressif/python_env/idf6.0_py3.13_env/bin:$PATH"
+npm run mod -- ../../roulette/manifest.json --port /dev/cu.usbmodem101
 ```
 
 ビルドのみ確認する場合は `npm run mod:build -- ../../roulette/manifest.json`。
+ポートの自動検出は環境によって失敗するので `--port` を明示する。
 
 ## アセットの再生成
 
@@ -44,6 +47,33 @@ npm run mod -- ../../roulette/manifest.json
 ```
 
 `rsvg-convert`（librsvg）と ImageMagick が必要。
+
+## ホストファームウェアの注意点（頭部タッチセンサ）
+
+手元の M5StackChan では頭部タッチセンサ（Si12T、I2C 0x68）が応答せず、
+upstream のホストが `new TouchPanel()` で `write failed` を投げて起動を中断する
+（顔は出るが `app behaviors ready` に到達せず、MOD が登録されない）。
+
+回避策として、`config.TouchPanel = false` を与えるホストマニフェストを用意している。
+`compose.ts` の `config.TouchPanel ?? device.sensor.TouchPanel` が falsy になり、
+Si12T の生成自体をスキップする。**頭部タッチ（撫でる操作）は無効になる**。
+
+このファイルはフォントの `characterFiles` が `host/app/` 基準の相対パスで
+書かれている都合で、**upstream の `host/app/` 直下に置かないと解決できない**。
+roulette 側を正本にし、コピーして使う。
+
+```console
+cp host-manifest-no-touchpanel.json \
+  ../stack-chan/firmware/host/app/manifest_m5stackchan_cores3_no_touchpanel.json
+cd ../stack-chan/firmware
+npm run flash:m5stackchan_cores3 -- \
+  --manifest host/app/manifest_m5stackchan_cores3_no_touchpanel.json \
+  --port /dev/cu.usbmodem101
+```
+
+upstream 側には未追跡ファイルが 1 つ増えるだけで、`git pull` は妨げない。
+本来は upstream の堅牢性の問題（任意センサの失敗で起動全体が止まる）なので、
+issue として報告する価値がある。
 
 ## 設計メモ
 
