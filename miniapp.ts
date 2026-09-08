@@ -69,8 +69,8 @@ class Reel {
   phase: ReelPhase = 'stopped'
   target = 0
 
-  start(): void {
-    this.position = Math.floor(Math.random() * SYMBOL_COUNT) * SYMBOL_SIZE
+  start(symbol: number): void {
+    this.position = symbol * SYMBOL_SIZE
     this.phase = 'spinning'
     this.target = 0
   }
@@ -101,12 +101,21 @@ class Reel {
 
 type GamePhase = 'ready' | 'spinning' | 'result'
 
+function describeError(error: unknown): string {
+  if (error instanceof Error) return `${error.name}: ${error.message}`
+  return String(error)
+}
+
 class GeekSlotBehavior extends Behavior {
   #reels = [new Reel(), new Reel(), new Reel()]
   #phase: GamePhase = 'ready'
   #win = false
+  #frame = 0
+  #draws = 0
+  #seed = 0x6d2b79f5
 
   onDisplaying(port: PiuPort): void {
+    trace(`[slot] onDisplaying width=${port.width} height=${port.height}\n`)
     port.interval = FRAME_INTERVAL_MS
     // 初期表示で3リールが同じ絵柄にならないようずらしておく。
     for (let index = 0; index < REEL_COUNT; index++) {
@@ -119,45 +128,79 @@ class GeekSlotBehavior extends Behavior {
     port.stop()
   }
 
-  onTouchBegan(port: PiuPort, _id: number, x: number): void {
-    if (this.#phase === 'spinning') {
-      const lane = Math.floor((x / port.width) * REEL_COUNT)
-      this.#reels[Math.min(REEL_COUNT - 1, Math.max(0, lane))].requestStop()
-      port.invalidate()
-      return
+  onTouchBegan(port: PiuPort, _id: number, x: number, _y: number, ticks = 0): void {
+    trace(`[slot] onTouchBegan phase=${this.#phase} x=${x}\n`)
+    try {
+      if (this.#phase === 'spinning') {
+        const lane = Math.floor((x / port.width) * REEL_COUNT)
+        this.#reels[Math.min(REEL_COUNT - 1, Math.max(0, lane))].requestStop()
+        port.invalidate()
+        return
+      }
+      this.#start(port, ticks)
+    } catch (error) {
+      trace(`[slot] EXC onTouchBegan: ${describeError(error)}\n`)
     }
-    this.#start(port)
   }
 
   onTouchEnded(): void {}
 
   onTimeChanged(port: PiuPort): void {
-    for (const reel of this.#reels) reel.update()
-    if (this.#phase === 'spinning' && this.#reels.every((reel) => reel.phase === 'stopped')) {
-      this.#finish(port)
+    try {
+      this.#frame++
+      if (this.#frame <= 3 || this.#frame % 30 === 0) {
+        trace(`[slot] onTimeChanged frame=${this.#frame} draws=${this.#draws} pos=${this.#reels.map((r) => Math.floor(r.position)).join(',')}\n`)
+      }
+      for (const reel of this.#reels) reel.update()
+      if (this.#phase === 'spinning' && this.#reels.every((reel) => reel.phase === 'stopped')) {
+        this.#finish(port)
+      }
+      port.invalidate()
+    } catch (error) {
+      trace(`[slot] EXC onTimeChanged: ${describeError(error)}\n`)
     }
-    port.invalidate()
   }
 
   onDraw(port: PiuPort, x = 0, y = 0, width = port.width, height = port.height): void {
-    port.fillColor(COLOR_BACKGROUND, x, y, width, height)
-    for (let index = 0; index < REEL_COUNT; index++) this.#drawReel(port, index)
-    this.#drawPayline(port)
-    this.#drawStatus(port)
+    this.#draws++
+    if (this.#draws <= 3) trace(`[slot] onDraw #${this.#draws} phase=${this.#phase} rect=${x},${y},${width},${height}\n`)
+    try {
+      port.fillColor(COLOR_BACKGROUND, x, y, width, height)
+      for (let index = 0; index < REEL_COUNT; index++) this.#drawReel(port, index)
+      if (this.#draws <= 3) trace('[slot] onDraw: reels ok\n')
+      this.#drawPayline(port)
+      this.#drawStatus(port)
+      if (this.#draws <= 3) trace('[slot] onDraw: done\n')
+    } catch (error) {
+      trace(`[slot] EXC onDraw: ${describeError(error)}\n`)
+    }
   }
 
-  #start(port: PiuPort): void {
-    for (const reel of this.#reels) reel.start()
+  #start(port: PiuPort, ticks: number): void {
+    trace('[slot] start\n')
+    // CompartmentではMath.random()が禁止されるため、タップ時刻を混ぜたxorshift32を使う。
+    this.#seed = (this.#seed ^ (ticks | 0)) || 0x6d2b79f5
+    for (const reel of this.#reels) {
+      this.#seed ^= this.#seed << 13
+      this.#seed ^= this.#seed >>> 17
+      this.#seed ^= this.#seed << 5
+      reel.start(Math.floor(((this.#seed >>> 0) / 0x100000000) * SYMBOL_COUNT))
+    }
+    trace(`[slot] start: reels ok pos=${this.#reels.map((r) => r.position).join(',')}\n`)
     this.#phase = 'spinning'
     this.#win = false
     port.interval = FRAME_INTERVAL_MS
+    trace('[slot] start: interval ok\n')
     port.start()
+    trace('[slot] start: clock started\n')
     port.invalidate()
+    trace('[slot] start: invalidated\n')
   }
 
   #finish(port: PiuPort): void {
     const first = paylineSymbol(this.#reels[0].position)
     this.#win = this.#reels.every((reel) => paylineSymbol(reel.position) === first)
+    trace(`[slot] finish win=${this.#win} symbol=${first}\n`)
     this.#phase = 'result'
     port.stop()
   }

@@ -4,6 +4,9 @@
     "$(MODDABLE)/examples/manifest_typings.json",
     "../stack-chan/firmware/host/app/manifest_typings.json"
   ],
+  "config": {
+    "format": "RGB565BE"
+  },
   "modules": {
     "miniapp": "./miniapp"
   },

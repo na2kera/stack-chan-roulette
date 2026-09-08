@@ -86,6 +86,10 @@ Piu の `Port.drawTexture` には**転送先のサイズ指定がない**。
 3 リールは 1 枚の `reel.png` を共有し、スクロール位置だけを別々に持つ。
 窓（180px）がシート末尾（240px）をまたぐときは、先頭へ折り返して 2 回に分けて描画する。
 
+画像のビルド形式は、CoreS3 のホストに合わせて `manifest.json` の
+`config.format` で `RGB565BE` を指定する。省略すると MOD は既定の
+`RGB565LE` で変換され、ホストとのバイト順の違いで画像の色が崩れる。
+
 シンボル番号はシートの並び順と一致する（0=技育展, 1=技育祭, 2=技育博, 3=技育CAMP）。
 `tools/build-assets.sh` の `ORDER` と `miniapp.ts` の `SYMBOL_NAMES` を必ず揃えること。
 # stack-chan-roulette
