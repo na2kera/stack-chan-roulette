@@ -101,6 +101,10 @@ class Reel {
 
 type GamePhase = 'ready' | 'spinning' | 'result'
 
+type HeadTapEvent = Readonly<{
+  ticks: number
+}>
+
 function describeError(error: unknown): string {
   if (error instanceof Error) return `${error.name}: ${error.message}`
   return String(error)
@@ -144,6 +148,16 @@ class GeekSlotBehavior extends Behavior {
   }
 
   onTouchEnded(): void {}
+
+  onGeekSlotHeadTap(port: PiuPort, event: HeadTapEvent): void {
+    trace(`[slot] head tap phase=${this.#phase}\n`)
+    if (this.#phase === 'spinning') return
+    try {
+      this.#start(port, event.ticks)
+    } catch (error) {
+      trace(`[slot] EXC onGeekSlotHeadTap: ${describeError(error)}\n`)
+    }
+  }
 
   onTimeChanged(port: PiuPort): void {
     try {
@@ -231,7 +245,7 @@ class GeekSlotBehavior extends Behavior {
   }
 
   #drawStatus(port: PiuPort): void {
-    let message = 'タップでスタート'
+    let message = '画面または頭部タップでスタート'
     let color = COLOR_TEXT
     if (this.#phase === 'spinning') {
       message = '左 / 中央 / 右 をタップして止める'
@@ -240,7 +254,7 @@ class GeekSlotBehavior extends Behavior {
         message = `${SYMBOL_NAMES[paylineSymbol(this.#reels[0].position)]} が揃った！`
         color = COLOR_WIN
       } else {
-        message = 'はずれ — タップでもう一度'
+        message = 'はずれ — 画面または頭部をタップ'
       }
     }
     port.drawString(message, statusStyle, color, 0, STATUS_TOP, port.width, STATUS_HEIGHT)
