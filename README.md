@@ -1,7 +1,7 @@
 # 技育スロット
 
 M5StackChan CoreS3 のｽﾀｯｸﾁｬﾝファームウェア上で動くスロット MOD（ミニアプリ）。
-技育展・技育祭・技育博・技育CAMP の 4 つのロゴが 3 リールで回り、タップで 1 つずつ止める。
+技育展・技育祭・技育博・技育CAMP の 4 つのロゴが 3 リールで回り、画面または頭部タップで開始して画面タップで 1 つずつ止める。
 中央のペイラインに同じロゴが 3 つ揃えば当たり。
 
 ## 必要なもの
@@ -48,32 +48,14 @@ npm run mod -- ../../roulette/manifest.json --port /dev/cu.usbmodem101
 
 `rsvg-convert`（librsvg）と ImageMagick が必要。
 
-## ホストファームウェアの注意点（頭部タッチセンサ）
+## 頭部タッチ
 
-手元の M5StackChan では頭部タッチセンサ（Si12T、I2C 0x68）が応答せず、
-upstream のホストが `new TouchPanel()` で `write failed` を投げて起動を中断する
-（顔は出るが `app behaviors ready` に到達せず、MOD が登録されない）。
+標準の M5StackChan CoreS3 ホストで有効な Si12T 頭部タッチセンサを使う。
+スロットが待機中または結果表示中のとき、頭部を短くタップして離すとリールが回り始める。
+スワイプや長押しは開始操作として扱わない。リールの停止には従来どおり画面タップを使う。
 
-回避策として、`config.TouchPanel = false` を与えるホストマニフェストを用意している。
-`compose.ts` の `config.TouchPanel ?? device.sensor.TouchPanel` が falsy になり、
-Si12T の生成自体をスキップする。**頭部タッチ（撫でる操作）は無効になる**。
-
-このファイルはフォントの `characterFiles` が `host/app/` 基準の相対パスで
-書かれている都合で、**upstream の `host/app/` 直下に置かないと解決できない**。
-roulette 側を正本にし、コピーして使う。
-
-```console
-cp host-manifest-no-touchpanel.json \
-  ../stack-chan/firmware/host/app/manifest_m5stackchan_cores3_no_touchpanel.json
-cd ../stack-chan/firmware
-npm run flash:m5stackchan_cores3 -- \
-  --manifest host/app/manifest_m5stackchan_cores3_no_touchpanel.json \
-  --port /dev/cu.usbmodem101
-```
-
-upstream 側には未追跡ファイルが 1 つ増えるだけで、`git pull` は妨げない。
-本来は upstream の堅牢性の問題（任意センサの失敗で起動全体が止まる）なので、
-issue として報告する価値がある。
+`config.TouchPanel = false` のホストマニフェストで書き込んでいる場合は、
+upstream 標準の `host/app/manifest_m5stackchan_cores3.json` でホストを書き込み直す。
 
 ## 設計メモ
 

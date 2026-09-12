@@ -8,6 +8,7 @@
     "format": "RGB565BE"
   },
   "modules": {
+    "mod": "./mod",
     "miniapp": "./miniapp"
   },
   "resources": {
