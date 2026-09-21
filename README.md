@@ -57,6 +57,27 @@ npm run mod -- ../../roulette/manifest.json --port /dev/cu.usbmodem101
 `config.TouchPanel = false` のホストマニフェストで書き込んでいる場合は、
 upstream 標準の `host/app/manifest_m5stackchan_cores3.json` でホストを書き込み直す。
 
+## スタート演出
+
+画面または頭部タップで開始すると、ホストの音声機能で「スタート」と発話し、
+頭部 LED（`head`）が約 1.2 秒間、虹色に光る。
+発話を待たずにリールが回り、全リール停止時やアプリを閉じたときは LED を消灯する。
+発話中に再スタートした場合は音声を重ねない。
+
+音声にはホストで設定済みの TTS を使うため、そのプロバイダの設定が必要。
+LED 非搭載時や音声・LED のエラー時もゲームは継続し、エラーはシリアルログへ出力する。
+実機では画面・頭部の両方で開始し、発話、発光、約 1.2 秒後の消灯、
+演出中にアプリを閉じた際の消灯を確認する。
+
+MOD ビルド後は、生成された JS を使って操作・消灯・エラー時の継続を検証できる。
+次はこのリポジトリで実行する例（worktree 名に応じて `roulette` 部分を変更する）。
+
+```console
+node tools/test-start-effects.mjs ../stack-chan/firmware/dist/tmp/esp32/debug/roulette/tsc
+```
+
+このテストは音声・LED・Piu をスタブ化しており、実機の音や発光の確認は別途必要。
+
 ## 設計メモ
 
 Piu の `Port.drawTexture` には**転送先のサイズ指定がない**。
