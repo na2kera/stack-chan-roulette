@@ -99,6 +99,11 @@ class Reel {
   }
 }
 
+// SDKのContent.applicationは公開型に未定義のため、利用する範囲だけ補う。
+type EffectsApplication = {
+  delegate(message: string, active: boolean): unknown
+}
+
 type GamePhase = 'ready' | 'spinning' | 'result'
 
 type HeadTapEvent = Readonly<{
@@ -114,12 +119,15 @@ class GeekSlotBehavior extends Behavior {
   #reels = [new Reel(), new Reel(), new Reel()]
   #phase: GamePhase = 'ready'
   #win = false
+  #reach = false
+  #effectsApplication: EffectsApplication | undefined
   #frame = 0
   #draws = 0
   #seed = 0x6d2b79f5
 
   onDisplaying(port: PiuPort): void {
     trace(`[slot] onDisplaying width=${port.width} height=${port.height}\n`)
+    this.#effectsApplication = (port as PiuPort & { application?: EffectsApplication }).application
     port.interval = FRAME_INTERVAL_MS
     // 初期表示で3リールが同じ絵柄にならないようずらしておく。
     for (let index = 0; index < REEL_COUNT; index++) {
@@ -130,6 +138,8 @@ class GeekSlotBehavior extends Behavior {
 
   onUndisplaying(port: PiuPort): void {
     port.stop()
+    this.#setReach(false)
+    this.#effectsApplication = undefined
   }
 
   onTouchBegan(port: PiuPort, _id: number, x: number, _y: number, ticks = 0): void {
@@ -168,6 +178,9 @@ class GeekSlotBehavior extends Behavior {
       for (const reel of this.#reels) reel.update()
       if (this.#phase === 'spinning' && this.#reels.every((reel) => reel.phase === 'stopped')) {
         this.#finish(port)
+      } else if (this.#phase === 'spinning') {
+        const stopped = this.#reels.filter((reel) => reel.phase === 'stopped')
+        this.#setReach(stopped.length === 2 && paylineSymbol(stopped[0].position) === paylineSymbol(stopped[1].position))
       }
       port.invalidate()
     } catch (error) {
@@ -191,6 +204,7 @@ class GeekSlotBehavior extends Behavior {
   }
 
   #start(port: PiuPort, ticks: number): void {
+    this.#setReach(false)
     trace('[slot] start\n')
     // CompartmentではMath.random()が禁止されるため、タップ時刻を混ぜたxorshift32を使う。
     this.#seed = (this.#seed ^ (ticks | 0)) || 0x6d2b79f5
@@ -211,7 +225,19 @@ class GeekSlotBehavior extends Behavior {
     trace('[slot] start: invalidated\n')
   }
 
+  #setReach(active: boolean): void {
+    if (this.#reach === active) return
+    this.#reach = active
+    // ハードウェア操作はMOD側に委譲し、演出の失敗でゲームを止めない。
+    try {
+      this.#effectsApplication?.delegate('onGeekSlotReachChanged', active)
+    } catch (error) {
+      trace(`[slot] reach effect failed: ${describeError(error)}\n`)
+    }
+  }
+
   #finish(port: PiuPort): void {
+    this.#setReach(false)
     const first = paylineSymbol(this.#reels[0].position)
     this.#win = this.#reels.every((reel) => paylineSymbol(reel.position) === first)
     trace(`[slot] finish win=${this.#win} symbol=${first}\n`)

@@ -37,6 +37,12 @@ npm run mod -- ../../roulette/manifest.json --port /dev/cu.usbmodem101
 ビルドのみ確認する場合は `npm run mod:build -- ../../roulette/manifest.json`。
 ポートの自動検出は環境によって失敗するので `--port` を明示する。
 
+## ローカルテスト
+
+Node.js 23.2 以降で `node --test tests/*.test.mjs` を実行する。
+Piu とハードウェア API をスタブ化し、実装の停止操作・リーチ通知・消灯・エラー処理を検証する。
+実機での発光・発話品質は別途確認する。
+
 ## アセットの再生成
 
 `assets/reel.png` は 1 シンボル 60x60 を 4 つ縦に連結した 60x240 のスプライトシート。
@@ -56,6 +62,13 @@ npm run mod -- ../../roulette/manifest.json --port /dev/cu.usbmodem101
 
 `config.TouchPanel = false` のホストマニフェストで書き込んでいる場合は、
 upstream 標準の `host/app/manifest_m5stackchan_cores3.json` でホストを書き込み直す。
+
+## リーチ演出
+
+停止済みの2リールの中央絵柄が一致し、残りの1リールがまだ動いているとリーチ。
+停止順にかかわらず、頭部 LED を黄色に点灯し、ホストに設定された音声合成で「リーチ」と一度だけ発話する。
+全リール停止時とアプリを閉じたときに消灯する。同じフレームで3リールが停止した場合は結果表示に進む。
+LED や音声の機能が使えない場合も、スロットの操作は継続できる。
 
 ## 設計メモ
 

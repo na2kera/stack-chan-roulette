@@ -1,6 +1,9 @@
 const HEAD_TAP_MESSAGE = 'onGeekSlotHeadTap'
 
 type DistributableApplication = {
+  behavior?: {
+    onGeekSlotReachChanged?: (application: unknown, active: boolean) => void
+  }
   distribute?: (message: string, event: unknown) => void
 }
 
@@ -11,6 +14,13 @@ type HeadTouchEvent = {
 }
 
 type SlotContext = {
+  lighting?: {
+    lightOn(name: string, r: number, g: number, b: number): void
+    lightOff(name: string): void
+  }
+  audio?: {
+    say(text: string): Promise<{ success: boolean; reason?: string }>
+  }
   input: {
     touchPanel?: {
       subscribe(listener: (event: HeadTouchEvent) => void): () => void
@@ -25,6 +35,32 @@ const behavior = Object.freeze({
   onContextCreated(context: SlotContext): void {
     const touchPanel = context.input.touchPanel
     const application = context.ui.application as DistributableApplication | undefined
+    if (application?.behavior) {
+      let active = false
+      application.behavior.onGeekSlotReachChanged = (_application, reach) => {
+        if (active === reach) return
+        active = reach
+        try {
+          if (reach) context.lighting?.lightOn('head', 24, 18, 0)
+          else context.lighting?.lightOff('head')
+        } catch (error) {
+          trace(`[slot] reach LED failed: ${String(error)}\n`)
+        }
+        if (!reach) return
+        try {
+          void context.audio?.say('リーチ').then((result) => {
+            if (!result.success) trace(`[slot] reach speech failed: ${result.reason}\n`)
+          }).catch((error) => {
+            trace(`[slot] reach speech failed: ${String(error)}\n`)
+          })
+        } catch (error) {
+          trace(`[slot] reach speech failed: ${String(error)}\n`)
+        }
+      }
+    } else {
+      trace('[slot] reach effect event handler is unavailable\n')
+    }
+
     if (!touchPanel) {
       trace('[slot] head touch panel is unavailable\n')
       return
