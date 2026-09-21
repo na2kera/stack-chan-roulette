@@ -38,6 +38,7 @@ function setup({ head = true, led = true, say, rainbow } = {}) {
   let port
   const application = {
     behavior: {},
+    delegate(message, ...args) { return this.behavior[message]?.(this, ...args) },
     distribute(message, event) { port?.delegate(message, event) },
   }
   const mod = load('mod', {
@@ -54,6 +55,7 @@ function setup({ head = true, led = true, say, rainbow } = {}) {
     lighting: {
       led: led ? { head: {} } : {},
       lightRainbow(name) { calls.push(['rainbow', name]); rainbow?.() },
+      lightOn(...args) { calls.push(['on', ...args]) },
       lightOff(name) { calls.push(['off', name]) },
     },
   })
@@ -61,6 +63,7 @@ function setup({ head = true, led = true, say, rainbow } = {}) {
     constructor(_data, options) {
       Object.assign(this, options)
       this.width = 320
+      this.application = application
       this.behavior = options?.Behavior ? new options.Behavior() : undefined
     }
     delegate(message, ...args) { return this.behavior?.[message]?.(this, ...args) }
@@ -77,7 +80,7 @@ function setup({ head = true, led = true, say, rainbow } = {}) {
   port.delegate('onDisplaying')
   return {
     calls, timers, logs, port, instance,
-    touch(x = 50) { port.delegate('onTouchBegan', 0, x, 20, 100) },
+    touch(x = 50, ticks = 100) { port.delegate('onTouchBegan', 0, x, 20, ticks) },
     head(event = { gesture: 'release', tap: true, ticks: 200 }) { listener?.(event) },
     finish() {
       for (const x of [50, 160, 270]) port.delegate('onTouchBegan', 0, x, 20, 300)
@@ -164,5 +167,28 @@ test('音声・LEDの例外でも回転と次回の発話を妨げない', async
     s.touch()
     await new Promise(setImmediate)
     assert.equal(s.calls.filter(([kind]) => kind === 'say').length, 2)
+  }
+})
+
+test('開始演出中のリーチは黄色を優先し、開始タイマーを解除して終了時に消灯する', () => {
+  for (const close of [false, true]) {
+    const s = setup()
+    s.touch(50, 49)
+    assert.equal(s.timers.size, 1)
+    s.touch(50)
+    s.touch(160)
+    for (let i = 0; i < 30; i++) s.port.delegate('onTimeChanged')
+    assert.equal(s.timers.size, 0)
+    assert.deepEqual(s.calls, [
+      ['rainbow', 'head'], ['say', 'スタート'], ['off', 'head'],
+      ['on', 'head', 24, 18, 0], ['say', 'リーチ'],
+    ])
+    if (close) {
+      s.port.application = undefined
+      s.port.bubble = () => { throw new Error('detached') }
+      s.instance.dispose()
+    } else s.finish()
+    assert.deepEqual(s.calls.at(-1), ['off', 'head'])
+    assert.equal(s.calls.length, 6)
   }
 })

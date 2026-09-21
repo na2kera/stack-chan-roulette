@@ -5,10 +5,11 @@ const START_LIGHT_MS = 1200
 const LED_NAME = 'head'
 
 type DistributableApplication = {
-  distribute?: (message: string, event: unknown) => void
   behavior?: {
+    onGeekSlotReachChanged?: (application: unknown, active: boolean) => void
     onGeekSlotStart?: (application: unknown, setStop: (stop: () => void) => void) => boolean
   }
+  distribute?: (message: string, event: unknown) => void
 }
 
 type HeadTouchEvent = {
@@ -18,13 +19,14 @@ type HeadTouchEvent = {
 }
 
 type SlotContext = {
-  audio: {
-    say(text: string): Promise<{ success: true; value: string } | { success: false; reason?: string }>
-  }
-  lighting: {
-    led: Record<string, unknown>
+  lighting?: {
+    led?: Record<string, unknown>
     lightRainbow(name: string): void
+    lightOn(name: string, r: number, g: number, b: number): void
     lightOff(name: string): void
+  }
+  audio?: {
+    say(text: string): Promise<{ success: boolean; reason?: string }>
   }
   input: {
     touchPanel?: {
@@ -54,7 +56,7 @@ const behavior = Object.freeze({
         if (!lighting) return
         lighting = false
         try {
-          context.lighting.lightOff(LED_NAME)
+          context.lighting?.lightOff(LED_NAME)
         } catch (error) {
           trace(`[slot] start light off failed: ${String(error)}\n`)
         }
@@ -64,7 +66,7 @@ const behavior = Object.freeze({
         stopLight()
         setStop(stopLight)
         try {
-          if (context.lighting.led[LED_NAME]) {
+          if (context.lighting?.led?.[LED_NAME]) {
             lighting = true
             context.lighting.lightRainbow(LED_NAME)
             lightTimer = Timer.set(stopLight, START_LIGHT_MS)
@@ -78,8 +80,8 @@ const behavior = Object.freeze({
           speaking = true
           const sayStart = async (): Promise<void> => {
             try {
-              const result = await context.audio.say('スタート')
-              if (!result.success) trace(`[slot] start speech failed: ${result.reason}\n`)
+              const result = await context.audio?.say('スタート')
+              if (result && !result.success) trace(`[slot] start speech failed: ${result.reason}\n`)
             } catch (error) {
               trace(`[slot] start speech failed: ${String(error)}\n`)
             } finally {
@@ -90,9 +92,33 @@ const behavior = Object.freeze({
         }
         return true
       }
+      let active = false
+      application.behavior.onGeekSlotReachChanged = (_application, reach) => {
+        if (active === reach) return
+        active = reach
+        // リーチの黄色を開始演出のタイマーで消さないよう、先に解除する。
+        if (reach) stopLight()
+        try {
+          if (reach) context.lighting?.lightOn('head', 24, 18, 0)
+          else context.lighting?.lightOff('head')
+        } catch (error) {
+          trace(`[slot] reach LED failed: ${String(error)}\n`)
+        }
+        if (!reach) return
+        try {
+          void context.audio?.say('リーチ').then((result) => {
+            if (!result.success) trace(`[slot] reach speech failed: ${result.reason}\n`)
+          }).catch((error) => {
+            trace(`[slot] reach speech failed: ${String(error)}\n`)
+          })
+        } catch (error) {
+          trace(`[slot] reach speech failed: ${String(error)}\n`)
+        }
+      }
     } else {
-      trace('[slot] start effects event bridge is unavailable\n')
+      trace('[slot] effects event handler is unavailable\n')
     }
+
     if (!touchPanel) {
       trace('[slot] head touch panel is unavailable\n')
       return
