@@ -124,6 +124,7 @@ class GeekSlotBehavior extends Behavior {
   #frame = 0
   #draws = 0
   #seed = 0x6d2b79f5
+  #stopEffects?: () => void
 
   onDisplaying(port: PiuPort): void {
     trace(`[slot] onDisplaying width=${port.width} height=${port.height}\n`)
@@ -136,8 +137,10 @@ class GeekSlotBehavior extends Behavior {
     port.invalidate()
   }
 
-  onUndisplaying(port: PiuPort): void {
+  onGeekSlotDispose(port: PiuPort): void {
     port.stop()
+    this.#stopEffects?.()
+    this.#stopEffects = undefined
     this.#setReach(false)
     this.#effectsApplication = undefined
   }
@@ -223,6 +226,9 @@ class GeekSlotBehavior extends Behavior {
     trace('[slot] start: clock started\n')
     port.invalidate()
     trace('[slot] start: invalidated\n')
+    port.bubble('onGeekSlotStart', (stop: () => void) => {
+      this.#stopEffects = stop
+    })
   }
 
   #setReach(active: boolean): void {
@@ -243,6 +249,8 @@ class GeekSlotBehavior extends Behavior {
     trace(`[slot] finish win=${this.#win} symbol=${first}\n`)
     this.#phase = 'result'
     port.stop()
+    this.#stopEffects?.()
+    this.#stopEffects = undefined
   }
 
   #drawReel(port: PiuPort, index: number): void {
@@ -292,23 +300,29 @@ const definition: MiniAppDefinition = Object.freeze({
   title: '技育スロット',
   icon: 'play',
   create() {
-    return new Container(null, {
+    const port = new Port(null, {
+      left: 0,
+      right: 0,
+      top: 0,
+      bottom: 0,
+      active: true,
+      Behavior: GeekSlotBehavior,
+    })
+    const content = new Container(null, {
       left: 0,
       right: 0,
       top: 0,
       bottom: 0,
       skin: background,
-      contents: [
-        new Port(null, {
-          left: 0,
-          right: 0,
-          top: 0,
-          bottom: 0,
-          active: true,
-          Behavior: GeekSlotBehavior,
-        }),
-      ],
+      contents: [port],
     })
+    return {
+      content,
+      // ホストは表示ツリーから外した後にdisposeを呼ぶため、消灯関数を保持する。
+      dispose() {
+        port.delegate('onGeekSlotDispose')
+      },
+    }
   },
 })
 

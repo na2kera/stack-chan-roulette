@@ -6,7 +6,7 @@ import vm from 'node:vm'
 
 function load(file, globals = {}) {
   const source = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8')
-  const code = stripTypeScriptTypes(source).replace("import 'piu/MC'", '').replace('export default ', 'globalThis.result = ')
+  const code = stripTypeScriptTypes(source).replace("import 'piu/MC'", '').replace("import Timer from 'timer'", '').replace('export default ', 'globalThis.result = ')
   const sandbox = { trace() {}, ...globals }
   vm.runInNewContext(code, sandbox)
   return sandbox.result
@@ -21,7 +21,7 @@ function setup({ lightingError = false, speech = () => Promise.resolve({ success
     delegate(message, value) { return this.behavior[message]?.(this, value) },
     distribute(message, value) { port.behavior[message]?.(port, value) },
   }
-  const mod = load('mod.ts', { trace: (message) => logs.push(message) })
+  const mod = load('mod.ts', { trace: (message) => logs.push(message), Timer: { clear() {} } })
   mod.onContextCreated({
     input: touch ? { touchPanel: { subscribe(fn) { listener = fn } } } : {},
     ui: { application },
@@ -29,7 +29,10 @@ function setup({ lightingError = false, speech = () => Promise.resolve({ success
       lightOn(...args) { calls.push(['on', ...args]); if (lightingError) throw Error('LED error') },
       lightOff(...args) { calls.push(['off', ...args]) },
     },
-    audio: { say(text) { calls.push(['say', text]); return speech() } },
+    audio: { say(text) {
+      if (text === 'スタート') return Promise.resolve({ success: true })
+      calls.push(['say', text]); return speech()
+    } },
   })
   class Node {
     constructor(_data, options) {
@@ -40,8 +43,13 @@ function setup({ lightingError = false, speech = () => Promise.resolve({ success
   const [definition] = load('miniapp.ts', {
     Behavior: class {}, Container: Node, Port: Node, Skin: class {}, Style: class {},
   })
-  const port = definition.create().contents[0]
-  Object.assign(port, { application, width: 320, height: 196, invalidate() {}, start() {}, stop() {} })
+  const instance = definition.create()
+  const port = instance.content.contents[0]
+  Object.assign(port, {
+    application, width: 320, height: 196, invalidate() {}, start() {}, stop() {},
+    bubble(message, value) { return application.delegate(message, value) },
+    delegate(message) { return this.behavior[message]?.(this) },
+  })
   const behavior = port.behavior
   behavior.onDisplaying(port)
   return {
@@ -49,7 +57,7 @@ function setup({ lightingError = false, speech = () => Promise.resolve({ success
     start(ticks = 49) { behavior.onTouchBegan(port, 0, 10, 0, ticks) },
     stop(index) { behavior.onTouchBegan(port, 0, (index + 0.5) * 320 / 3, 0) },
     frames(count = 30) { for (let i = 0; i < count; i++) behavior.onTimeChanged(port) },
-    close() { behavior.onUndisplaying(port) },
+    close() { instance.dispose() },
     head(event) { listener(event) },
   }
 }
